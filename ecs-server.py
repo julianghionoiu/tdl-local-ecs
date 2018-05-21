@@ -136,8 +136,14 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                        "The assignPublicIp policy for this deployment should be " +
                                        EXPECTED_ASSIGN_PUBLIC_IP)
 
+        # Extract Env parameters from request
+        try:
+            environment_overrides = content["overrides"]["containerOverrides"][0]["environment"]
+        except KeyError:
+            environment_overrides = []
+
         # Handle RunTask
-        run_docker_task(docker_image)
+        run_docker_task(docker_image, environment_overrides)
 
         # Send response
         send_successful_response(request)
@@ -150,8 +156,13 @@ def is_valid_docker_image(image_name):
     return return_code == 0
 
 
-def run_docker_task(image_name):
-    return_code = call_and_log(["docker", "run", "--detach", image_name])
+def run_docker_task(image_name, environment_overrides):
+    cmd = ["docker", "run", "--detach"]
+    for key_pair in environment_overrides:
+        cmd.append("--env")
+        cmd.append(key_pair["name"] + "=" + key_pair["value"])
+    cmd.append(image_name)
+    return_code = call_and_log(cmd)
     if return_code != 0:
         raise Exception("Docker run failed")
 
@@ -168,7 +179,7 @@ def send_successful_response(request):
     request.send_header('Content-type', 'application/json')
     request.end_headers()
     request.wfile.write(A_VALID_RESPONSE)
-    log_info("Finished sending.")
+    log_info("Finished sending successful response")
 
 
 def send_error_response(request, error_class, error_message):
