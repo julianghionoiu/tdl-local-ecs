@@ -7,6 +7,7 @@
 import BaseHTTPServer
 import json
 import os
+from subprocess import call
 from urlparse import urlparse
 
 import time
@@ -14,33 +15,66 @@ import time
 HOST_NAME = 'localhost'
 PORT_NUMBER = 9988
 
+EXPECTED_CLUSTER_NAME = 'local-test-cluster'
+EXPECTED_LAUNCH_TYPE = 'FARGATE'
+EXPECTED_SUBNET = 'local-subnet-x'
+EXPECTED_SECURITY_GROUP = 'sg-local-security'
+EXPECTED_ASSIGN_PUBLIC_IP = 'DISABLED'
+
 SCRIPT_FOLDER = os.path.dirname(os.path.realpath(__file__))
 CACHE_FOLDER = os.path.join(SCRIPT_FOLDER, ".taskRepository")
 
-SENT_EMAIL_RESPONSE = """
-                        <SendEmailResponse xmlns='https://email.amazonaws.com/doc/2010-03-31/'>
-                           <SendEmailResult>
-                               <MessageId>000001271b15238a-fd3ae762-2563-11df-8cd4-6d4e828a9ae8-000000</MessageId>
-                           </SendEmailResult>
-                           <ResponseMetadata>
-                               <RequestId>fd3ae762-2563-11df-8cd4-6d4e828a9ae8</RequestId>
-                           </ResponseMetadata>
-                        </SendEmailResponse>
-                      """
-"""
+A_VALID_RESPONSE = """
 {
-    "networkConfiguration": {
-        "awsvpcConfiguration": { 
-            "subnets": ["subnet-cf2386b9"], 
-            "securityGroups": ["sg-ee159989"], 
-            "assignPublicIp": "DISABLED"
-            }
-        }, 
-    "cluster": "dpnt-coverage-cluster", 
-    "launchType": "FARGATE", 
-    "taskDefinition": "test-coverage"
+    "failures": [],
+    "tasks": [
+        {
+            "taskArn": "arn:aws:ecs:eu-west-1:577770582757:task/3723fca1-4e11-42a2-aece-0fd8265033af",
+            "group": "family:test-coverage",
+            "attachments": [
+                {
+                    "status": "PRECREATED",
+                    "type": "ElasticNetworkInterface",
+                    "id": "2414d1f3-b00b-4ccc-af44-49c939800c2f",
+                    "details": [
+                        {
+                            "name": "subnetId",
+                            "value": "subnet-cf2386b9"
+                        }
+                    ]
+                }
+            ],
+            "overrides": {
+                "containerOverrides": [
+                    {
+                        "name": "dpnt-coverage-java"
+                    }
+                ]
+            },
+            "launchType": "FARGATE",
+            "lastStatus": "PROVISIONING",
+            "createdAt": 1526911643.114,
+            "version": 1,
+            "clusterArn": "arn:aws:ecs:eu-west-1:577770582757:cluster/dpnt-coverage-cluster",
+            "memory": "2048",
+            "platformVersion": "1.1.0",
+            "desiredStatus": "RUNNING",
+            "taskDefinitionArn": "arn:aws:ecs:eu-west-1:577770582757:task-definition/test-coverage:1",
+            "cpu": "1024",
+            "containers": [
+                {
+                    "containerArn": "arn:aws:ecs:eu-west-1:577770582757:container/886c4de4-7c23-4bc9-9043-1637bd5c68fa",
+                    "taskArn": "arn:aws:ecs:eu-west-1:577770582757:task/3723fca1-4e11-42a2-aece-0fd8265033af",
+                    "lastStatus": "PENDING",
+                    "name": "dpnt-coverage-java",
+                    "networkInterfaces": []
+                }
+            ]
+        }
+    ]
 }
-"""
+                      """
+
 
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
@@ -51,34 +85,99 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_raw_content = convert_raw_http_request_data_to_string(request)
         log_debug("Request body: \n%s" % request_raw_content)
 
-        # Validate action
+        # Ensure RunTask action
         requested_action = request.headers['X-Amz-Target']
         if not requested_action.endswith('RunTask'):
-            send_invalid_request_to_the_client(request)
+            send_error_response(request, "ClientException", "Request not supported")
             return
 
-        # Handle RunTask
+        # Deserialise
         content = json.loads(request_raw_content)
 
-        send_successful_response_to_client(request)
+        # Validate Cluster, TaskDefinition, LaunchType and Network Configuration
+        if "cluster" not in content or content["cluster"] != EXPECTED_CLUSTER_NAME:
+            return send_error_response(request, "ClusterNotFoundException", "Cluster not found")
+
+        # Validate TaskDefinition
+        if "taskDefinition" not in content:
+            return send_error_response(request, "ClientException", "Task definition not provided")
+
+        docker_image = content["taskDefinition"] + ":latest"
+        if not is_valid_docker_image(docker_image):
+            return send_error_response(request, "ClientException",
+                                       " TaskDefinition not found. No Docker image: " + docker_image)
+
+        # Validate Network Configuration
+        if "networkConfiguration" not in content or "awsvpcConfiguration" not in content["networkConfiguration"]:
+            return send_error_response(request, "InvalidParameterException",
+                                       "Network Configuration must be provided when "
+                                       "networkMode 'awsvpc' is specified")
+
+        awsvpcConfiguration = content["networkConfiguration"]["awsvpcConfiguration"]
+        if "subnets" not in awsvpcConfiguration or not awsvpcConfiguration["subnets"]:
+            return send_error_response(request, "InvalidParameterException", "subnets can not be empty")
+
+        subnet_id = awsvpcConfiguration["subnets"][0]
+        if subnet_id != EXPECTED_SUBNET:
+            return send_error_response(request, "InvalidParameterException",
+                                       "The subnet ID " + subnet_id + " does not exist")
+
+        if "securityGroups" not in awsvpcConfiguration or not awsvpcConfiguration["securityGroups"]:
+            return send_error_response(request, "InvalidParameterException", "securityGroups can not be empty")
+
+        security_group_id = awsvpcConfiguration["securityGroups"][0]
+        if security_group_id != EXPECTED_SECURITY_GROUP:
+            return send_error_response(request, "InvalidParameterException",
+                                       "The security group " + security_group_id + " does not exist")
+
+        if "assignPublicIp" not in awsvpcConfiguration \
+                or awsvpcConfiguration["assignPublicIp"] != EXPECTED_ASSIGN_PUBLIC_IP:
+            return send_error_response(request, "InvalidParameterException",
+                                       "The assignPublicIp policy for this deployment should be " +
+                                       EXPECTED_ASSIGN_PUBLIC_IP)
+
+        # Handle RunTask
+        run_docker_task(docker_image)
+
+        # Send response
+        send_successful_response(request)
+
+
+# ~~~ Docker
+
+def is_valid_docker_image(image_name):
+    return_code = call_and_log(["docker", "image", "inspect", "--format='{{.Container}}'", image_name])
+    return return_code == 0
+
+
+def run_docker_task(image_name):
+    return_code = call_and_log(["docker", "run", "--detach", image_name])
+    if return_code != 0:
+        raise Exception("Docker run failed")
+
+
+def call_and_log(cmd):
+    log_info("Executing command: " + " ".join(cmd))
+    return call(cmd)
 
 
 # ~~~ Response handling
 
-def send_successful_response_to_client(request):
+def send_successful_response(request):
     request.send_response(200)
     request.send_header('Content-type', 'application/json')
     request.end_headers()
-    request.wfile.write(SENT_EMAIL_RESPONSE)
+    request.wfile.write(A_VALID_RESPONSE)
     log_info("Finished sending.")
 
 
-def send_invalid_request_to_the_client(request):
+def send_error_response(request, error_class, error_message):
     request.send_response(400)
     request.send_header('Content-type', 'application/json')
     request.end_headers()
-    request.wfile.write('{"__type":"ClientException","message":"Request not supported"}')
-    log_info("Finished sending.")
+    formatted_message = '{"__type":"' + error_class + '","message":"' + error_message + '"}'
+    request.wfile.write(formatted_message)
+    log_info("Finished sending error:" + formatted_message)
 
 
 # ~~~ Request handling
