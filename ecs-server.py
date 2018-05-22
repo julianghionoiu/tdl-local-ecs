@@ -9,11 +9,10 @@ import json
 import os
 from subprocess import call
 from urlparse import urlparse
-
+import sys
 import time
 
-HOST_NAME = 'localhost'
-PORT_NUMBER = 9988
+HOST_NAME = '127.0.0.1'
 
 EXPECTED_CLUSTER_NAME = 'local-test-cluster'
 EXPECTED_LAUNCH_TYPE = 'FARGATE'
@@ -77,6 +76,10 @@ A_VALID_RESPONSE = """
 
 
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+
+    def __init__(self, ecs_task_env, *args):
+        self.ecs_task_env = ecs_task_env
+        BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
 
     # noinspection PyPep8Naming,PyMethodParameters
     def do_POST(request):
@@ -143,7 +146,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             environment_overrides = []
 
         # Handle RunTask
-        run_docker_task(docker_image, environment_overrides)
+        run_docker_task(docker_image, request.ecs_task_env, environment_overrides)
 
         # Send response
         send_successful_response(request)
@@ -156,11 +159,17 @@ def is_valid_docker_image(image_name):
     return return_code == 0
 
 
-def run_docker_task(image_name, environment_overrides):
+def run_docker_task(image_name, ecs_task_env, environment_overrides):
     cmd = ["docker", "run", "--detach"]
+
+    for parameter_element in ecs_task_env:
+        cmd.append("--env")
+        cmd.append(parameter_element["ParameterKey"] + "=" + parameter_element["ParameterValue"])
+
     for key_pair in environment_overrides:
         cmd.append("--env")
         cmd.append(key_pair["name"] + "=" + key_pair["value"])
+
     cmd.append(image_name)
     return_code = call_and_log(cmd)
     if return_code != 0:
@@ -229,13 +238,24 @@ if __name__ == '__main__':
     if not os.path.exists(CACHE_FOLDER):
         os.mkdir(CACHE_FOLDER)
 
+    port_number = int(sys.argv[1])
+    json_task_env_file = sys.argv[2]
+
+    log_info("Reading ECS Task Env file: "+json_task_env_file)
+
+    with open(json_task_env_file) as f:
+        task_env_as_list = json.load(f)
+
+    def handler(*args):
+        MyHandler(task_env_as_list, *args)
+
     server_class = BaseHTTPServer.HTTPServer
-    httpd = server_class((HOST_NAME, PORT_NUMBER), MyHandler)
-    log_info("Server Starts - %s:%s" % (HOST_NAME, PORT_NUMBER))
+    httpd = server_class((HOST_NAME, port_number), handler)
+    log_info("Server Starts - %s:%s" % (HOST_NAME, port_number))
     log_info("Kill process using: ")
     log_info("     $ python ecs-server-wrapper.py stop")
     log_info("In case, unsuccessful, use this to find out process id: ")
-    log_info("     $ netstat -tulpn | grep :" + str(PORT_NUMBER))
+    log_info("     $ netstat -tulpn | grep :" + str(port_number))
     log_info("...and kill it manually: ")
     log_info("     $ kill -9 <pid>")
 
@@ -244,4 +264,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     httpd.server_close()
-    log_info("Server Stops - %s:%s" % (HOST_NAME, PORT_NUMBER))
+    log_info("Server Stops - %s:%s" % (HOST_NAME, port_number))

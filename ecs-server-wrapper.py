@@ -5,12 +5,14 @@ import subprocess
 import sys
 import time
 
+CURRENT_DIR = os.getcwd()
 SCRIPT_FOLDER = os.path.dirname(os.path.realpath(__file__))
 CACHE_FOLDER = os.path.join(SCRIPT_FOLDER, ".cache")
 FIVE_SECONDS_DELAY = 5
 
 
-def run(command):
+def run(argv):
+    command = get_arg(argv, 1, "command")
     if not os.path.exists(CACHE_FOLDER):
         os.mkdir(CACHE_FOLDER)
 
@@ -20,7 +22,8 @@ def run(command):
 
     if command == "start":
         print "Will run and detach from CLI and return to prompt..."
-        run_python(python_file, port, pid_file, False)
+        json_task_env_file = get_arg(argv, 2, "JSON ENV task file")
+        run_python(python_file, port, json_task_env_file, pid_file, False)
         wait_until_port_is_open(port, 5, 5)
 
     if command == "status":
@@ -32,14 +35,26 @@ def run(command):
 
     if command == "console":
         print "Entered console mode (blocking, Ctrl-C to breakout)..."
-        run_python(python_file, port, pid_file, True)
+        json_task_env_file = get_arg(argv, 2, "JSON ENV task file")
+        run_python(python_file, port, json_task_env_file, pid_file, True)
 
 
-def run_python(python_path, port, pid_file, consoleMode):
-    if consoleMode:
-        proc = subprocess.call(["python", python_path, str(port)], cwd=SCRIPT_FOLDER)
+def get_arg(argv, index, arg_name):
+    if index >= len(argv):
+        raise Exception("Not enough parameters. Please provide "+arg_name)
+
+    return argv[index]
+
+
+def as_absolute(json_task_env_file):
+    return os.path.join(os.getcwd(), json_task_env_file)
+
+
+def run_python(python_path, port, json_task_env_file, pid_file, console_mode):
+    if console_mode:
+        proc = subprocess.call(["python", python_path, str(port), as_absolute(json_task_env_file)], cwd=SCRIPT_FOLDER)
     else:
-        proc = subprocess.Popen(["python", python_path, str(port), "&", ], cwd=SCRIPT_FOLDER)
+        proc = subprocess.Popen(["python", python_path, str(port), as_absolute(json_task_env_file), "&", ], cwd=SCRIPT_FOLDER)
 
     f = open(pid_file, "w")
     f.write(str(proc.pid))
@@ -102,4 +117,4 @@ def kill_process(pid_file):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1])
+    run(sys.argv)
