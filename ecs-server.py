@@ -15,10 +15,11 @@ import time
 HOST_NAME = '127.0.0.1'
 
 EXPECTED_CLUSTER_NAME = 'local-test-cluster'
+EXPECTED_CONTAINER_NAME = 'default-container'
 EXPECTED_LAUNCH_TYPE = 'FARGATE'
 EXPECTED_SUBNET = 'local-subnet-x'
 EXPECTED_SECURITY_GROUP = 'sg-local-security'
-EXPECTED_ASSIGN_PUBLIC_IP = 'DISABLED'
+EXPECTED_ASSIGN_PUBLIC_IP = 'ENABLED'
 
 SCRIPT_FOLDER = os.path.dirname(os.path.realpath(__file__))
 CACHE_FOLDER = os.path.join(SCRIPT_FOLDER, ".taskRepository")
@@ -141,7 +142,13 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         # Extract Env parameters from request
         try:
-            environment_overrides = content["overrides"]["containerOverrides"][0]["environment"]
+            container_overrides = content["overrides"]["containerOverrides"][0]
+            if "name" not in container_overrides \
+                    or container_overrides["name"] != EXPECTED_CONTAINER_NAME:
+                return send_error_response(request, "InvalidParameterException",
+                                           "The containerOverrides overrides have to explicitly specify the name: "
+                                           + EXPECTED_CONTAINER_NAME)
+            environment_overrides = container_overrides["environment"]
         except KeyError:
             environment_overrides = []
 
@@ -241,13 +248,15 @@ if __name__ == '__main__':
     port_number = int(sys.argv[1])
     json_task_env_file = sys.argv[2]
 
-    log_info("Reading ECS Task Env file: "+json_task_env_file)
+    log_info("Reading ECS Task Env file: " + json_task_env_file)
 
     with open(json_task_env_file) as f:
         task_env_as_list = json.load(f)
 
+
     def handler(*args):
         MyHandler(task_env_as_list, *args)
+
 
     server_class = BaseHTTPServer.HTTPServer
     httpd = server_class((HOST_NAME, port_number), handler)
