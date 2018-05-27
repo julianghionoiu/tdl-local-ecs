@@ -7,10 +7,11 @@
 import BaseHTTPServer
 import json
 import os
-from subprocess import call
-from urlparse import urlparse
 import sys
 import time
+import yaml
+from subprocess import call
+from urlparse import urlparse
 
 HOST_NAME = '127.0.0.1'
 
@@ -78,8 +79,8 @@ A_VALID_RESPONSE = """
 
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
-    def __init__(self, ecs_task_env, *args):
-        self.ecs_task_env = ecs_task_env
+    def __init__(self, ecs_task_env_dict, *args):
+        self.ecs_task_env = ecs_task_env_dict
         BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
 
     # noinspection PyPep8Naming,PyMethodParameters
@@ -169,9 +170,9 @@ def is_valid_docker_image(image_name):
 def run_docker_task(image_name, ecs_task_env, environment_overrides):
     cmd = ["docker", "run", "--detach"]
 
-    for parameter_element in ecs_task_env:
+    for key, value in ecs_task_env.items():
         cmd.append("--env")
-        cmd.append(parameter_element["ParameterKey"] + "=" + parameter_element["ParameterValue"])
+        cmd.append(key + "=" + value)
 
     for key_pair in environment_overrides:
         cmd.append("--env")
@@ -241,6 +242,13 @@ def log(message):
 
 # ~~~ Http server
 
+def replace_local_ip_with_docker_host():
+    docker_host_name_resolved_from_container = os.getenv('DOCKER_HOST_WITHIN_CONTAINER', "host.docker.internal")
+    for key in task_env_as_dist:
+        task_env_as_dist[key] = task_env_as_dist[key] \
+            .replace("127.0.0.1", docker_host_name_resolved_from_container)
+
+
 if __name__ == '__main__':
     if not os.path.exists(CACHE_FOLDER):
         os.mkdir(CACHE_FOLDER)
@@ -249,13 +257,17 @@ if __name__ == '__main__':
     json_task_env_file = sys.argv[2]
 
     log_info("Reading ECS Task Env file: " + json_task_env_file)
+    with open(json_task_env_file, 'r') as stream:
+        task_env_as_dist = yaml.load(stream)
+        replace_local_ip_with_docker_host()
 
-    with open(json_task_env_file) as f:
-        task_env_as_list = json.load(f)
+    log_info("Available Task ENV variables: ")
+    for key, value in task_env_as_dist.items():
+        log_info(key + "=" + value)
 
 
     def handler(*args):
-        MyHandler(task_env_as_list, *args)
+        MyHandler(task_env_as_dist, *args)
 
 
     server_class = BaseHTTPServer.HTTPServer
