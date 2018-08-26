@@ -168,7 +168,7 @@ def is_valid_docker_image(image_name):
 
 
 def run_docker_task(image_name, ecs_task_env, environment_overrides):
-    cmd = ["docker", "run", "--detach"]
+    cmd = ["docker", "run", "--interactive"]
 
     for key, value in ecs_task_env.items():
         cmd.append("--env")
