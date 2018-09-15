@@ -244,8 +244,8 @@ def log(message):
 
 def replace_local_ip_with_docker_host():
     docker_host_name_resolved_from_container = os.getenv('DOCKER_HOST_WITHIN_CONTAINER', "host.docker.internal")
-    for key in task_env_as_dist:
-        task_env_as_dist[key] = task_env_as_dist[key] \
+    for key in task_env_as_dict:
+        task_env_as_dict[key] = task_env_as_dict[key] \
             .replace("127.0.0.1", docker_host_name_resolved_from_container)
 
 
@@ -254,20 +254,20 @@ if __name__ == '__main__':
         os.mkdir(CACHE_FOLDER)
 
     port_number = int(sys.argv[1])
-    json_task_env_file = sys.argv[2]
+    task_env_file = sys.argv[2]
 
-    log_info("Reading ECS Task Env file: " + json_task_env_file)
-    with open(json_task_env_file, 'r') as stream:
-        task_env_as_dist = yaml.load(stream)
+    log_info("Reading ECS Task Env file: " + task_env_file)
+    with open(task_env_file, 'r') as stream:
+        task_env_as_dict = yaml.load(stream)
         replace_local_ip_with_docker_host()
 
     log_info("Available Task ENV variables: ")
-    for key, value in task_env_as_dist.items():
+    for key, value in task_env_as_dict.items():
         log_info(key + "=" + value)
 
 
     def handler(*args):
-        MyHandler(task_env_as_dist, *args)
+        MyHandler(task_env_as_dict, *args)
 
 
     server_class = BaseHTTPServer.HTTPServer
