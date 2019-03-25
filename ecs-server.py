@@ -218,7 +218,7 @@ def display_raw_request_retails_on_the_console(request):
 
 
 def convert_raw_http_request_data_to_string(request):
-    content_length = int(request.headers.getheader('content-length'))
+    content_length = int(request.headers.get_all('content-length'))
     return request.rfile.read(content_length)
 
 
