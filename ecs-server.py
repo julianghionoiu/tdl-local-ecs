@@ -195,7 +195,7 @@ def send_successful_response(request):
     request.send_response(200)
     request.send_header('Content-type', 'application/json')
     request.end_headers()
-    request.wfile.write(A_VALID_RESPONSE)
+    request.wfile.write(A_VALID_RESPONSE.encode("utf-8"))
     log_info("Finished sending successful response")
 
 
@@ -204,7 +204,7 @@ def send_error_response(request, error_class, error_message):
     request.send_header('Content-type', 'application/json')
     request.end_headers()
     formatted_message = '{"__type":"' + error_class + '","message":"' + error_message + '"}'
-    request.wfile.write(formatted_message)
+    request.wfile.write(formatted_message.encode("utf-8"))
     log_info("Finished sending error:" + formatted_message)
 
 
