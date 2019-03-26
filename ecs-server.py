@@ -218,8 +218,15 @@ def display_raw_request_retails_on_the_console(request):
 
 
 def convert_raw_http_request_data_to_string(request):
-    content_length = int(request.headers.get_all('content-length'))
-    return request.rfile.read(content_length)
+    raw_content_length = request.headers.get_all('content-length')
+
+    if raw_content_length is None:
+        content_length = 0
+    else:
+        content_length = int(raw_content_length[0])
+
+    bytes_read = request.rfile.read(content_length)
+    return bytes_read.decode("utf-8")
 
 
 # ~~~ Logging
