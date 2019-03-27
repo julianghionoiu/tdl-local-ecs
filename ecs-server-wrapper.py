@@ -21,7 +21,7 @@ def run(argv):
     pid_file = os.path.join(CACHE_FOLDER, "pid-" + str(port))
 
     if command == "start":
-        print "Will run and detach from CLI and return to prompt..."
+        print("Will run and detach from CLI and return to prompt...")
         json_task_env_file = get_arg(argv, 2, "JSON ENV task file")
         run_python(python_file, port, json_task_env_file, pid_file, False)
         wait_until_port_is_open(port, 5, 5)
@@ -34,7 +34,7 @@ def run(argv):
         wait_until_port_is_closed(port, 5, 5)
 
     if command == "console":
-        print "Entered console mode (blocking, Ctrl-C to breakout)..."
+        print("Entered console mode (blocking, Ctrl-C to breakout)...")
         json_task_env_file = get_arg(argv, 2, "JSON ENV task file")
         run_python(python_file, port, json_task_env_file, pid_file, True)
 
@@ -59,57 +59,57 @@ def run_python(python_path, port, json_task_env_file, pid_file, console_mode):
     f = open(pid_file, "w")
     f.write(str(proc.pid))
     f.close()
-    print "Process running as pid: " + str(proc.pid)
+    print("Process running as pid: " + str(proc.pid))
     return proc.pid
 
 
 def wait_until_port_is_open(port, count, delay):
     n = 0
     while True:
-        print "Is application listening on port " + str(port) + "? "
+        print("Is application listening on port " + str(port) + "? ")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         result = sock.connect_ex(('127.0.0.1', port))
         if result == 0:
-            print "Yes"
+            print("Yes")
             return
 
         n = n + 1
         if n < count:
-            print "No. Retrying in " + str(delay) + " seconds"
+            print("No. Retrying in " + str(delay) + " seconds")
             time.sleep(delay)
         else:
-            print "No."
+            print("No.")
             return
 
 
 def wait_until_port_is_closed(port, count, delay):
     n = 0
     while True:
-        print "Is application listening on port " + str(port) + "? "
+        print("Is application listening on port " + str(port) + "? ")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         result = sock.connect_ex(('127.0.0.1', int(port)))
         if result != 0:
-            print "No"
+            print("No")
             return
 
         n = n + 1
         if n < count:
-            print "Yes. Retrying in " + str(delay) + " seconds"
+            print("Yes. Retrying in " + str(delay) + " seconds")
             time.sleep(delay)
         else:
-            print "Yes."
+            print("Yes.")
             return
 
 
 def kill_process(pid_file):
     if not os.path.exists(pid_file):
-        print "Already stopped."
+        print("Already stopped.")
         return
 
     f = open(pid_file, "r")
     try:
         pid_str = f.read()
-        print "Kill process with pid: " + pid_str
+        print("Kill process with pid: " + pid_str)
         os.kill(int(pid_str), signal.SIGTERM)
     except Exception:
         f.close()

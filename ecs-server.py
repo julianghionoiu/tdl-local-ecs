@@ -4,14 +4,14 @@
 
 # There should also be an endpoint that allows the retrieval of the latest N messages
 
-import BaseHTTPServer
+import http.server
 import json
 import os
 import sys
 import time
 import yaml
 from subprocess import call
-from urlparse import urlparse
+from urllib.parse import urlparse
 
 HOST_NAME = '127.0.0.1'
 
@@ -77,11 +77,11 @@ A_VALID_RESPONSE = """
                       """
 
 
-class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class MyHandler(http.server.BaseHTTPRequestHandler):
 
     def __init__(self, ecs_task_env_dict, *args):
         self.ecs_task_env = ecs_task_env_dict
-        BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
+        http.server.BaseHTTPRequestHandler.__init__(self, *args)
 
     # noinspection PyPep8Naming,PyMethodParameters
     def do_POST(request):
@@ -170,7 +170,7 @@ def is_valid_docker_image(image_name):
 def run_docker_task(image_name, ecs_task_env, environment_overrides):
     cmd = ["docker", "run", "--detach"]
 
-    for key, value in ecs_task_env.items():
+    for key, value in list(ecs_task_env.items()):
         cmd.append("--env")
         cmd.append(key + "=" + value)
 
@@ -195,7 +195,7 @@ def send_successful_response(request):
     request.send_response(200)
     request.send_header('Content-type', 'application/json')
     request.end_headers()
-    request.wfile.write(A_VALID_RESPONSE)
+    request.wfile.write(A_VALID_RESPONSE.encode("utf-8"))
     log_info("Finished sending successful response")
 
 
@@ -204,7 +204,7 @@ def send_error_response(request, error_class, error_message):
     request.send_header('Content-type', 'application/json')
     request.end_headers()
     formatted_message = '{"__type":"' + error_class + '","message":"' + error_message + '"}'
-    request.wfile.write(formatted_message)
+    request.wfile.write(formatted_message.encode("utf-8"))
     log_info("Finished sending error:" + formatted_message)
 
 
@@ -218,8 +218,15 @@ def display_raw_request_retails_on_the_console(request):
 
 
 def convert_raw_http_request_data_to_string(request):
-    content_length = int(request.headers.getheader('content-length'))
-    return request.rfile.read(content_length)
+    raw_content_length = request.headers.get_all('content-length')
+
+    if raw_content_length is None:
+        content_length = 0
+    else:
+        content_length = int(raw_content_length[0])
+
+    bytes_read = request.rfile.read(content_length)
+    return bytes_read.decode("utf-8")
 
 
 # ~~~ Logging
@@ -237,7 +244,7 @@ def log_info(message):
 
 
 def log(message):
-    print time.asctime(), message
+    print(time.asctime(), message)
 
 
 # ~~~ Http server
@@ -262,7 +269,7 @@ if __name__ == '__main__':
         replace_local_ip_with_docker_host()
 
     log_info("Available Task ENV variables: ")
-    for key, value in task_env_as_dict.items():
+    for key, value in list(task_env_as_dict.items()):
         log_info(key + "=" + value)
 
 
@@ -270,7 +277,7 @@ if __name__ == '__main__':
         MyHandler(task_env_as_dict, *args)
 
 
-    server_class = BaseHTTPServer.HTTPServer
+    server_class = http.server.HTTPServer
     httpd = server_class((HOST_NAME, port_number), handler)
     log_info("Server Starts - %s:%s" % (HOST_NAME, port_number))
     log_info("Kill process using: ")
