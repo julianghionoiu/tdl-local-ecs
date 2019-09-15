@@ -52,9 +52,9 @@ def as_absolute(json_task_env_file):
 
 def run_python(python_path, port, json_task_env_file, pid_file, console_mode):
     if console_mode:
-        proc = subprocess.call(["python", python_path, str(port), as_absolute(json_task_env_file)], cwd=SCRIPT_FOLDER)
+        proc = subprocess.call(["python3", python_path, str(port), as_absolute(json_task_env_file)], cwd=SCRIPT_FOLDER)
     else:
-        proc = subprocess.Popen(["python", python_path, str(port), as_absolute(json_task_env_file), "&", ], cwd=SCRIPT_FOLDER)
+        proc = subprocess.Popen(["python3", python_path, str(port), as_absolute(json_task_env_file), "&", ], cwd=SCRIPT_FOLDER)
 
     f = open(pid_file, "w")
     f.write(str(proc.pid))
