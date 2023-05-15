@@ -265,7 +265,7 @@ if __name__ == '__main__':
 
     log_info("Reading ECS Task Env file: " + task_env_file)
     with open(task_env_file, 'r') as stream:
-        task_env_as_dict = yaml.load(stream)
+        task_env_as_dict = yaml.load(stream, Loader=yaml.Loader)
         replace_local_ip_with_docker_host()
 
     log_info("Available Task ENV variables: ")
